@@ -36,7 +36,7 @@
 // If the interrupt is "too" close to the previous one, ignore the current one.
 // To define if two interrupts are too close, look at semiPeriodShrinkMargin and
 // semiPeriodExpandMargin constant
-//#define FILTER_INT_PERIOD
+#define FILTER_INT_PERIOD
 
 // FOR DEBUG PURPOSE ONLY: 
 // If the FILTER_INT_PERIOD is enabled, print on Serial the time passed 
@@ -70,8 +70,8 @@ static uint16_t semiPeriodLength = 0;
 // Delay values after endMargin turn the thyristor always OFF.
 // Tune this parameters accordingly to your setup (electrical network and MCU).
 // Values are expressed in microseconds
-static const uint16_t startMargin = 200;
-static const uint16_t endMargin = 500;
+static const uint16_t startMargin = 1000;
+static const uint16_t endMargin = 1000;
 
 // This parameter represents the time span in which 2 (or more) very near delays are merged:
 // This could be necessary for 2 main reasons:
@@ -87,7 +87,7 @@ static const uint16_t mergePeriod = 20;
 // Period (in us) before the end of the semiperiod, when an interrupt is trigged to 
 // turn off each gate signal. Ignore this parameter if you use a predefined pulse length.
 // Look at PREDEFINED_PULSE_LENGTH constant for more info.
-static const uint16_t gateTurnOffTime = 300;
+static const uint16_t gateTurnOffTime = 500;
 
 static_assert( endMargin - gateTurnOffTime > mergePeriod, "endMargin must be greater than (gateTurnOffTime + mergePeriod)");
 
@@ -238,8 +238,8 @@ void activate_thyristors(){
 
 #ifdef FILTER_INT_PERIOD
 // In microsecond
-const static int semiPeriodShrinkMargin = 50;
-const static int semiPeriodExpandMargin = 50;
+const static int semiPeriodShrinkMargin = 100;
+const static int semiPeriodExpandMargin = 100;
 #endif
 
 #if defined(FILTER_INT_PERIOD) || defined(MONITOR_FREQUENCY)
@@ -251,6 +251,11 @@ static uint32_t lastTime = 0;
 static CircularQueue<uint32_t, 5> queue;
 static uint32_t total = 0;
 #endif
+
+
+int thyristor_interrupt_count=0;
+int thyristor_raw_interrupt_count=0;
+
 
 #if defined(ARDUINO_ARCH_ESP8266)
 void ICACHE_RAM_ATTR zero_cross_int(){
@@ -278,6 +283,8 @@ void zero_cross_int(){
     }
 #endif
 
+	thyristor_raw_interrupt_count++;
+
 #ifdef FILTER_INT_PERIOD
     // Filters out spurious interrupts. The effectiveness of this simple
     // filter could vary depending on noise on electrical networ.
@@ -285,6 +292,8 @@ void zero_cross_int(){
       return;
     }
 #endif
+
+	thyristor_interrupt_count++;
 
 #ifdef MONITOR_FREQUENCY
     // if diff is very very greater than the theoretical value, the electrical signal
@@ -305,6 +314,9 @@ void zero_cross_int(){
   }
 #endif
 
+
+	//LC -- this causes glitches when always on!
+  /*
   // Turn OFF all the thyristors, even if always ON.
   // This is to speed up transitions between ON to OFF state:
   // If I don't turn OFF all those thyristors, I must wait
@@ -312,6 +324,7 @@ void zero_cross_int(){
   for(int i=0; i<Thyristor::nThyristors; i++){
     digitalWrite(pinDelay[i].pin, LOW);
   }
+  */
 
 #ifdef CHECK_MANAGED_THYR
   if(thyristorManaged!=Thyristor::nThyristors){
@@ -366,8 +379,8 @@ void zero_cross_int(){
     interruptEnabled = false;
     detachInterrupt(digitalPinToInterrupt(Thyristor::syncPin));
 #else
-    interruptEnabled = false;
-    detachInterrupt(digitalPinToInterrupt(Thyristor::syncPin));
+    //interruptEnabled = false;
+    //detachInterrupt(digitalPinToInterrupt(Thyristor::syncPin));	//LC -- occasional glitches if we disable and re-enable the interrupt so don't, just leave it on.
 #endif
 
     return;
@@ -512,7 +525,7 @@ void Thyristor::setDelay(uint16_t newDelay){
   if(enableInt){
     if(verbosity>2) Serial.println("Re-enabling interrupt");
     interruptEnabled = true;
-    attachInterrupt(digitalPinToInterrupt(syncPin), zero_cross_int, RISING);
+    attachInterrupt(digitalPinToInterrupt(syncPin), zero_cross_int, FALLING);
   }
   
   if(verbosity>2){
